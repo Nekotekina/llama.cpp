@@ -1,13 +1,13 @@
+#include "llava.h"
+#include "base64.hpp"
 #include "clip.h"
 #include "common.h"
 #include "llama.h"
-#include "llava.h"
-#include "base64.hpp"
 
 #include <cstdio>
 #include <cstdlib>
-#include <vector>
 #include <numeric>
+#include <vector>
 
 // RGB uint8 image
 struct clip_image_u8 {
@@ -38,8 +38,10 @@ struct clip_image_grid_shape {
  * @param possible_resolutions A list of possible resolutions in the format [(width1, height1), (width2, height2), ...].
  * @return The best fit resolution in the format (width, height).
  */
-static std::pair<int, int> select_best_resolution(const std::pair<int, int>& original_size, const std::vector<std::pair<int, int>>& possible_resolutions) {
-    int original_width  = original_size.first;
+static std::pair<int, int> select_best_resolution(const std::pair<int, int>& original_size,
+                                                  const std::vector<std::pair<int, int>>& possible_resolutions)
+{
+    int original_width = original_size.first;
     int original_height = original_size.second;
 
     std::pair<int, int> best_fit;
@@ -50,12 +52,13 @@ static std::pair<int, int> select_best_resolution(const std::pair<int, int>& ori
         int width = resolution.first;
         int height = resolution.second;
         float scale = std::min(static_cast<float>(width) / original_width, static_cast<float>(height) / original_height);
-        int downscaled_width  = static_cast<int>(original_width * scale);
+        int downscaled_width = static_cast<int>(original_width * scale);
         int downscaled_height = static_cast<int>(original_height * scale);
         int effective_resolution = std::min(downscaled_width * downscaled_height, original_width * original_height);
         int wasted_resolution = (width * height) - effective_resolution;
         // LOG_TEE("resolution: %d %d, scale: %f, downscaled: %d %d, effective: %d, wasted: %d\n", width, height, scale, downscaled_width, downscaled_height, effective_resolution, wasted_resolution);
-        if (effective_resolution > max_effective_resolution || (effective_resolution == max_effective_resolution && wasted_resolution < min_wasted_resolution)) {
+        if (effective_resolution > max_effective_resolution ||
+            (effective_resolution == max_effective_resolution && wasted_resolution < min_wasted_resolution)) {
             max_effective_resolution = effective_resolution;
             min_wasted_resolution = wasted_resolution;
             best_fit = resolution;
@@ -73,7 +76,9 @@ static std::pair<int, int> select_best_resolution(const std::pair<int, int>& ori
  * @param image_patch_size
  * @return <int, int>
  */
-static struct clip_image_grid_shape get_anyres_image_grid_shape(const std::pair<int, int> & image_size, const std::vector<std::pair<int, int>> & grid_pinpoints, int image_patch_size) {
+static struct clip_image_grid_shape get_anyres_image_grid_shape(const std::pair<int, int>& image_size,
+                                                                const std::vector<std::pair<int, int>>& grid_pinpoints, int image_patch_size)
+{
     /**
         Conversion from gguf flat array to vector:
         std::vector<std::pair<int, int>> possible_resolutions;
@@ -86,10 +91,12 @@ static struct clip_image_grid_shape get_anyres_image_grid_shape(const std::pair<
 }
 
 // Take the image segments in a grid configuration and return the embeddings and the number of embeddings into preallocated memory (image_embd_out)
-static bool clip_llava_handle_patches(clip_ctx * ctx_clip, std::vector<float *> & image_embd_v, struct clip_image_grid_shape grid_shape, float * image_embd_out, int * n_img_pos_out) {
+static bool clip_llava_handle_patches(clip_ctx* ctx_clip, std::vector<float*>& image_embd_v, struct clip_image_grid_shape grid_shape,
+                                      float* image_embd_out, int* n_img_pos_out)
+{
     struct {
-        struct ggml_tensor * newline;
-        struct ggml_context * ctx;
+        struct ggml_tensor* newline;
+        struct ggml_context* ctx;
     } model;
 
     const int32_t image_size = clip_image_size(ctx_clip);
@@ -97,7 +104,7 @@ static bool clip_llava_handle_patches(clip_ctx * ctx_clip, std::vector<float *> 
 
     int32_t num_patches_per_side = image_size / patch_size; // 336 / 14 = 24 - used for embedding-patching boxes (24*24 = 576 patches)
 
-    int num_patches_width  = grid_shape.first;  // grid 1-4
+    int num_patches_width = grid_shape.first;   // grid 1-4
     int num_patches_height = grid_shape.second; // grid 1-4
 
     const size_t num_images = num_patches_width * num_patches_height + 1;
@@ -107,13 +114,13 @@ static bool clip_llava_handle_patches(clip_ctx * ctx_clip, std::vector<float *> 
 
     {
         ctx_size += clip_embd_nbytes(ctx_clip) * num_images * 8; // image_features
-        ctx_size += 1024*1024 * ggml_type_size(GGML_TYPE_F32);
+        ctx_size += 1024 * 1024 * ggml_type_size(GGML_TYPE_F32);
     }
 
     struct ggml_init_params params {
-        /*.mem_size   =*/ ctx_size,
-        /*.mem_buffer =*/ NULL,
-        /*.no_alloc   =*/ false, // NOTE: this should be false when using the legacy API
+        /*.mem_size   =*/ctx_size,
+            /*.mem_buffer =*/NULL,
+            /*.no_alloc   =*/false, // NOTE: this should be false when using the legacy API
     };
 
     // Python reference code for full unpad:
@@ -150,7 +157,7 @@ static bool clip_llava_handle_patches(clip_ctx * ctx_clip, std::vector<float *> 
 
     model.ctx = ggml_init(params);
 
-    ggml_tensor * newline_tmp = clip_get_newline_tensor(ctx_clip);
+    ggml_tensor* newline_tmp = clip_get_newline_tensor(ctx_clip);
     model.newline = ggml_new_tensor_1d(model.ctx, GGML_TYPE_F32, newline_tmp->ne[0]);
     if (newline_tmp->backend != GGML_BACKEND_TYPE_CPU) {
         if (newline_tmp->buffer == NULL) {
@@ -164,27 +171,25 @@ static bool clip_llava_handle_patches(clip_ctx * ctx_clip, std::vector<float *> 
         }
     }
 
-    struct ggml_tensor * image_features = ggml_new_tensor_3d(model.ctx, GGML_TYPE_F32, clip_n_mmproj_embd(ctx_clip), clip_n_patches(ctx_clip), num_images - 1); // example: 4096 x 576 x 4
+    struct ggml_tensor* image_features = ggml_new_tensor_3d(model.ctx, GGML_TYPE_F32, clip_n_mmproj_embd(ctx_clip), clip_n_patches(ctx_clip),
+                                                            num_images - 1); // example: 4096 x 576 x 4
     // ggml_tensor_printf(image_features,"image_features",__LINE__,false,false);
     // fill it with the image embeddings, ignoring the base
     for (size_t i = 1; i < num_images; i++) {
-        size_t offset = (i-1) * clip_embd_nbytes(ctx_clip);
-        memcpy((uint8_t *)(image_features->data) + offset, image_embd_v[i], clip_embd_nbytes(ctx_clip));
+        size_t offset = (i - 1) * clip_embd_nbytes(ctx_clip);
+        memcpy((uint8_t*)(image_features->data) + offset, image_embd_v[i], clip_embd_nbytes(ctx_clip));
     }
 
-    struct ggml_cgraph  * gf = ggml_new_graph(model.ctx);
+    struct ggml_cgraph* gf = ggml_new_graph(model.ctx);
     size_t size_ele = ggml_type_size(GGML_TYPE_F32);
 
-    struct ggml_tensor *image_features_patchview = ggml_view_4d(model.ctx, image_features,
-                                                                num_patches_per_side * clip_n_mmproj_embd(ctx_clip),
-                                                                num_patches_per_side,
-                                                                num_patches_width,
-                                                                num_patches_height,
-                                                                size_ele * num_patches_per_side * clip_n_mmproj_embd(ctx_clip),
-                                                                size_ele * num_patches_per_side * clip_n_mmproj_embd(ctx_clip) * num_patches_per_side,
-                                                                size_ele * num_patches_per_side * clip_n_mmproj_embd(ctx_clip) * num_patches_per_side * num_patches_width, 0);
+    struct ggml_tensor* image_features_patchview =
+        ggml_view_4d(model.ctx, image_features, num_patches_per_side * clip_n_mmproj_embd(ctx_clip), num_patches_per_side, num_patches_width,
+                     num_patches_height, size_ele * num_patches_per_side * clip_n_mmproj_embd(ctx_clip),
+                     size_ele * num_patches_per_side * clip_n_mmproj_embd(ctx_clip) * num_patches_per_side,
+                     size_ele * num_patches_per_side * clip_n_mmproj_embd(ctx_clip) * num_patches_per_side * num_patches_width, 0);
     // ggml_tensor_printf(image_features_patchview,"image_features_patchview",__LINE__,false,false);
-    struct ggml_tensor *permuted_cont = ggml_cont(model.ctx, ggml_permute(model.ctx, image_features_patchview, 0, 2, 1, 3));
+    struct ggml_tensor* permuted_cont = ggml_cont(model.ctx, ggml_permute(model.ctx, image_features_patchview, 0, 2, 1, 3));
     /**
      At the end of each row we have to add the row_end embeddings, which are the same as the newline embeddings
          image_feature = torch.cat((
@@ -195,7 +200,9 @@ static bool clip_llava_handle_patches(clip_ctx * ctx_clip, std::vector<float *> 
      */
 
     // ggml_tensor_printf(permuted_cont,"permuted_cont",__LINE__,false,false);
-    struct ggml_tensor *flatten = ggml_view_2d(model.ctx, permuted_cont, clip_n_mmproj_embd(ctx_clip), num_patches_height * num_patches_width * num_patches_per_side * num_patches_per_side,  size_ele * clip_n_mmproj_embd(ctx_clip), 0);
+    struct ggml_tensor* flatten = ggml_view_2d(model.ctx, permuted_cont, clip_n_mmproj_embd(ctx_clip),
+                                               num_patches_height * num_patches_width * num_patches_per_side * num_patches_per_side,
+                                               size_ele * clip_n_mmproj_embd(ctx_clip), 0);
     // ggml_tensor_printf(flatten,"flatten",__LINE__,false,false);
     ggml_build_forward_expand(gf, flatten);
     ggml_graph_compute_with_ctx(model.ctx, gf, 1);
@@ -203,8 +210,9 @@ static bool clip_llava_handle_patches(clip_ctx * ctx_clip, std::vector<float *> 
 
     memcpy(image_embd_out, image_embd_v[0], clip_embd_nbytes(ctx_clip)); // main image as global context
     // append without newline tokens (default behavior in llava_arch when not using unpad ):
-    memcpy(image_embd_out + clip_n_patches(ctx_clip) * clip_n_mmproj_embd(ctx_clip), (float*)result->data, clip_embd_nbytes(ctx_clip) * (num_images-1)); // grid patches
-    *n_img_pos_out = static_cast<int>(result->ne[1]+clip_n_patches(ctx_clip));
+    memcpy(image_embd_out + clip_n_patches(ctx_clip) * clip_n_mmproj_embd(ctx_clip), (float*)result->data,
+           clip_embd_nbytes(ctx_clip) * (num_images - 1)); // grid patches
+    *n_img_pos_out = static_cast<int>(result->ne[1] + clip_n_patches(ctx_clip));
 
     // Debug: Test single segments
     // Current findings: sending base image, sending a segment embedding all works similar to python
@@ -217,8 +225,8 @@ static bool clip_llava_handle_patches(clip_ctx * ctx_clip, std::vector<float *> 
     return true;
 }
 
-
-static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const clip_image_u8 * img, float * image_embd, int * n_img_pos) {
+static bool encode_image_with_clip(clip_ctx* ctx_clip, int n_threads, const clip_image_u8* img, float* image_embd, int* n_img_pos)
+{
     // std::vector<clip_image_f32*> img_res_v; // format VectN x H x W x RGB (N x 336 x 336 x 3), so interleaved RGB - different to the python implementation which is N x 3 x 336 x 336
     clip_image_f32_batch img_res_v;
     img_res_v.size = 0;
@@ -231,7 +239,7 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
 
     const int64_t t_img_enc_start_us = ggml_time_us();
 
-    const char * mm_patch_merge_type = clip_patch_merge_type(ctx_clip);
+    const char* mm_patch_merge_type = clip_patch_merge_type(ctx_clip);
 
     if (strcmp(mm_patch_merge_type, "spatial_unpad") != 0) {
         // flat / default llava-1.5 type embedding
@@ -246,24 +254,25 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
     } else {
         // spatial_unpad llava-1.6 type embedding
         // TODO: CLIP needs batching support - in HF the llm projection is separate after encoding, which might be a solution to quickly get batching working
-        std::vector<float *> image_embd_v;
+        std::vector<float*> image_embd_v;
         image_embd_v.resize(img_res_v.size);
         for (size_t i = 0; i < img_res_v.size; i++) {
-            image_embd_v[i] = (float *)malloc(clip_embd_nbytes(ctx_clip)); // 576 patches * 4096 embeddings * 4 bytes = 9437184
-            const bool encoded = clip_image_encode(ctx_clip, n_threads, &img_res_v.data[i], image_embd_v[i]); // image data is in 3x336x336 format and will be converted to 336x336x3 inside
+            image_embd_v[i] = (float*)malloc(clip_embd_nbytes(ctx_clip)); // 576 patches * 4096 embeddings * 4 bytes = 9437184
+            const bool encoded = clip_image_encode(ctx_clip, n_threads, &img_res_v.data[i],
+                                                   image_embd_v[i]); // image data is in 3x336x336 format and will be converted to 336x336x3 inside
             if (!encoded) {
-                LOG_TEE("Unable to encode image - spatial_unpad - subimage %d of %d\n", (int) i+1, (int) img_res_v.size);
+                LOG_TEE("Unable to encode image - spatial_unpad - subimage %d of %d\n", (int)i + 1, (int)img_res_v.size);
                 return false;
             }
         }
         const int64_t t_img_enc_batch_us = ggml_time_us();
         LOG_TEE("%s: %d segments encoded in %8.2f ms\n", __func__, (int)img_res_v.size, (t_img_enc_batch_us - t_img_enc_start_us) / 1000.0);
 
-        const int32_t * image_grid = clip_image_grid(ctx_clip);
+        const int32_t* image_grid = clip_image_grid(ctx_clip);
 
         std::vector<std::pair<int, int>> grid_pinpoints;
         for (int i = 0; i < 32 && image_grid[i] != 0; i += 2) {
-            grid_pinpoints.push_back({image_grid[i], image_grid[i+1]});
+            grid_pinpoints.push_back({image_grid[i], image_grid[i + 1]});
         }
 
         // free all img_res_v - not needed anymore
@@ -273,7 +282,7 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
 
         const int32_t image_size = clip_image_size(ctx_clip);
 
-        struct clip_image_grid_shape grid_shape = get_anyres_image_grid_shape({img->nx,img->ny}, grid_pinpoints, image_size);
+        struct clip_image_grid_shape grid_shape = get_anyres_image_grid_shape({img->nx, img->ny}, grid_pinpoints, image_size);
 
         int n_img_pos_out;
         clip_llava_handle_patches(ctx_clip, image_embd_v, grid_shape, image_embd, &n_img_pos_out);
@@ -300,19 +309,23 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
     return true;
 }
 
-bool llava_validate_embed_size(const llama_context * ctx_llama, const clip_ctx * ctx_clip) {
-        // make sure that the correct mmproj was used, i.e., compare apples to apples
+bool llava_validate_embed_size(const llama_context* ctx_llama, const clip_ctx* ctx_clip)
+{
+    // make sure that the correct mmproj was used, i.e., compare apples to apples
     int n_llama_embd = llama_n_embd(llama_get_model(ctx_llama));
     auto n_image_embd = clip_n_mmproj_embd(ctx_clip);
     if (n_image_embd != n_llama_embd) {
-        LOG_TEE("%s: embedding dim of the multimodal projector (%d) is not equal to that of LLaMA (%d). Make sure that you use the correct mmproj file.\n", __func__, n_image_embd, n_llama_embd);
+        LOG_TEE("%s: embedding dim of the multimodal projector (%d) is not equal to that of LLaMA (%d). Make sure that you use the correct mmproj "
+                "file.\n",
+                __func__, n_image_embd, n_llama_embd);
         return false;
     }
     return true;
 }
 
-bool llava_image_embed_make_with_clip_img(clip_ctx * ctx_clip, int n_threads, const clip_image_u8 * img, float ** image_embd_out, int * n_img_pos_out) {
-    float * image_embd = (float *)malloc(clip_embd_nbytes(ctx_clip)*6); // TODO: base on gridsize/llava model
+bool llava_image_embed_make_with_clip_img(clip_ctx* ctx_clip, int n_threads, const clip_image_u8* img, float** image_embd_out, int* n_img_pos_out)
+{
+    float* image_embd = (float*)malloc(clip_embd_nbytes(ctx_clip) * 6); // TODO: base on gridsize/llava model
     if (!image_embd) {
         LOG_TEE("Unable to allocate memory for image embeddings\n");
         return false;
@@ -330,15 +343,18 @@ bool llava_image_embed_make_with_clip_img(clip_ctx * ctx_clip, int n_threads, co
     return true;
 }
 
-bool llava_eval_image_embed(llama_context * ctx_llama, const struct llava_image_embed * image_embed, int n_batch, int * n_past) {
-    int n_embd  = llama_n_embd(llama_get_model(ctx_llama));
+bool llava_eval_image_embed(llama_context* ctx_llama, const struct llava_image_embed* image_embed, int n_batch, int* n_past)
+{
+    int n_embd = llama_n_embd(llama_get_model(ctx_llama));
 
     for (int i = 0; i < image_embed->n_image_pos; i += n_batch) {
         int n_eval = image_embed->n_image_pos - i;
         if (n_eval > n_batch) {
             n_eval = n_batch;
         }
-        llama_batch batch = {int32_t(n_eval), nullptr, (image_embed->embed+i*n_embd), nullptr, nullptr, nullptr, nullptr, *n_past, 1, 0, };
+        llama_batch batch = {
+            int32_t(n_eval), nullptr, (image_embed->embed + i * n_embd), nullptr, nullptr, nullptr, nullptr, *n_past, 1, 0,
+        };
         if (llama_decode(ctx_llama, batch)) {
             LOG_TEE("%s : failed to eval\n", __func__);
             return false;
@@ -348,8 +364,10 @@ bool llava_eval_image_embed(llama_context * ctx_llama, const struct llava_image_
     return true;
 }
 
-struct llava_image_embed * llava_image_embed_make_with_bytes(struct clip_ctx * ctx_clip, int n_threads, const unsigned char * image_bytes, int image_bytes_length) {
-    clip_image_u8 * img = clip_image_u8_init();
+struct llava_image_embed* llava_image_embed_make_with_bytes(struct clip_ctx* ctx_clip, int n_threads, const unsigned char* image_bytes,
+                                                            int image_bytes_length)
+{
+    clip_image_u8* img = clip_image_u8_init();
     if (!clip_image_load_from_bytes(image_bytes, image_bytes_length, img)) {
         clip_image_u8_free(img);
         LOG_TEE("%s: can't load image from bytes, is it a valid image?", __func__);
@@ -372,55 +390,60 @@ struct llava_image_embed * llava_image_embed_make_with_bytes(struct clip_ctx * c
     return result;
 }
 
-static bool load_file_to_bytes(const char* path, unsigned char** bytesOut, long *sizeOut) {
+static bool load_image_to_bytes(const char* path, unsigned char** bytesOut, long* sizeOut)
+{
     auto file = fopen(path, "rb");
     if (file == NULL) {
         LOG_TEE("%s: can't read file %s\n", __func__, path);
         return false;
     }
 
-    fseek(file, 0, SEEK_END);
-    auto fileSize = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    const size_t limit = 128 * 1024 * 1024; // File size should be less than this
+    // Instead of trying to get file size, let's allow reading from devices which cannot provide it (fifo, sockets)
 
-    auto buffer = (unsigned char *)malloc(fileSize); // Allocate memory to hold the file data
-    if (buffer == NULL) {
-        LOG_TEE("%s: failed to alloc %ld bytes for file %s\n", __func__, fileSize, path);
-        perror("Memory allocation error");
-        fclose(file);
-        return false;
-    }
+    auto buffer = (unsigned char*)malloc(limit); // Allocate memory to hold the file data
+
     errno = 0;
-    size_t ret = fread(buffer, 1, fileSize, file); // Read the file into the buffer
-    if (ferror(file)) {
-        die_fmt("read error: %s", strerror(errno));
-    }
-    if (ret != (size_t) fileSize) {
-        die("unexpectedly reached end of file");
+    size_t total = 0;
+    while (true) {
+        size_t ret = fread(buffer + total, 1, limit - total, file); // Read the file into the buffer
+        if (ferror(file)) {
+            die_fmt("%s: read error: %s", __func__, strerror(errno));
+        }
+        total += ret;
+        if (total >= limit) {
+            die_fmt("%s: file too big: %zu bytes or higher", __func__, limit);
+        }
+        if (feof(file)) {
+            break;
+        }
     }
     fclose(file); // Close the file
 
-    *bytesOut = buffer;
-    *sizeOut = fileSize;
+    // Fix memory allocation size
+    *bytesOut = (unsigned char*)realloc(buffer, total);
+    *sizeOut = total;
     return true;
 }
 
-struct llava_image_embed * llava_image_embed_make_with_filename(struct clip_ctx * ctx_clip, int n_threads, const char * image_path) {
+struct llava_image_embed* llava_image_embed_make_with_filename(struct clip_ctx* ctx_clip, int n_threads, const char* image_path)
+{
     unsigned char* image_bytes;
     long image_bytes_length;
-    auto loaded = load_file_to_bytes(image_path, &image_bytes, &image_bytes_length);
+    auto loaded = load_image_to_bytes(image_path, &image_bytes, &image_bytes_length);
     if (!loaded) {
         LOG_TEE("%s: failed to load %s\n", __func__, image_path);
         return NULL;
     }
 
-    llava_image_embed *embed = llava_image_embed_make_with_bytes(ctx_clip, n_threads, image_bytes, image_bytes_length);
+    llava_image_embed* embed = llava_image_embed_make_with_bytes(ctx_clip, n_threads, image_bytes, image_bytes_length);
     free(image_bytes);
 
     return embed;
 }
 
-void llava_image_embed_free(struct llava_image_embed * embed) {
+void llava_image_embed_free(struct llava_image_embed* embed)
+{
     free(embed->embed);
     free(embed);
 }
