@@ -277,7 +277,7 @@ int main(int argc, char ** argv) {
     LOG("add_bos: %d\n", add_bos);
 
     std::vector<llama_token> embd_inp;
-    int embd_img_pos = -1;
+    int embd_img_pos = -1, inp_img_pos = -1;
 
     if (params.interactive_first || params.instruct || params.chatml || !params.prompt.empty() || session_tokens.empty()) {
         LOG("tokenize the prompt\n");
@@ -807,6 +807,10 @@ int main(int argc, char ** argv) {
                 llama_sampling_accept(ctx_sampling, ctx, embd_inp[n_consumed], false);
 
                 ++n_consumed;
+                if (n_consumed == inp_img_pos) {
+                    embd_img_pos = embd.size();
+                    inp_img_pos = -1;
+                }
                 if ((int) embd.size() >= params.n_batch) {
                     break;
                 }
@@ -928,7 +932,6 @@ int main(int argc, char ** argv) {
                     embd_inp.push_back(llama_token_bos(model));
                 }
 
-                std::string buffer;
                 if (!params.input_prefix.empty()) {
                     LOG("appending input prefix: '%s'\n", params.input_prefix.c_str());
                     printf("%s", params.input_prefix.c_str());
@@ -938,11 +941,16 @@ int main(int argc, char ** argv) {
                 console::set_display(console::user_input);
                 display = params.display_prompt;
 
-                std::string line;
+                std::vector<std::string> lines;
                 bool another_line = true;
                 do {
-                    another_line = console::readline(line, params.multiline_input);
-                    buffer += line;
+                    lines.emplace_back();
+                    another_line = console::readline(lines.back(), params.multiline_input);
+                    if (auto pos = lines.back().find_first_of('\04') + 1) {
+                        // Cut last line if it contains a Ctrl+D control char
+                        lines.back().resize(pos - 1);
+                        break;
+                    }
                 } while (another_line);
 
                 // done taking input, reset color
@@ -951,14 +959,15 @@ int main(int argc, char ** argv) {
 
                 // Add tokens to embd only if the input buffer is non-empty
                 // Entering a empty line lets the user pass control back
-                if (buffer.length() > 1) {
+                if (lines.size() > 1 || lines.back() != "\n") {
                     // append input suffix if any
                     if (!params.input_suffix.empty()) {
                         LOG("appending input suffix: '%s'\n", params.input_suffix.c_str());
                         printf("%s", params.input_suffix.c_str());
                     }
 
-                    LOG("buffer: '%s'\n", buffer.c_str());
+                    for (auto& buffer : lines)
+                        LOG("buffer: '%s'\n", buffer.c_str());
 
                     const size_t original_size = embd_inp.size();
 
@@ -975,17 +984,31 @@ int main(int argc, char ** argv) {
                         embd_inp.insert(embd_inp.end(), cml_pfx.begin(), cml_pfx.end());
                     }
                     if (params.escape) {
-                        process_escapes(buffer);
+                        for (auto& buffer : lines)
+                            process_escapes(buffer);
                     }
 
                     const auto line_pfx = ::llama_tokenize(ctx, params.input_prefix, false, true);
-                    const auto line_inp = ::llama_tokenize(ctx, buffer,              false, false);
-                    const auto line_sfx = ::llama_tokenize(ctx, params.input_suffix, false, true);
-
-                    LOG("input tokens: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, line_inp).c_str());
-
                     embd_inp.insert(embd_inp.end(), line_pfx.begin(), line_pfx.end());
-                    embd_inp.insert(embd_inp.end(), line_inp.begin(), line_inp.end());
+
+                    for (auto& buffer : lines) {
+                        const auto epos = buffer.find("<image>");
+                        if (inp_img_pos == -1 && epos + 1 && image_embed) {
+                            auto beg = ::llama_tokenize(ctx, buffer.substr(0, epos), false, false);
+                            inp_img_pos = embd_inp.size() + beg.size();
+                            auto end = ::llama_tokenize(ctx, buffer.substr(epos + 7), false, false);
+                            LOG("input tokens (before <image>): %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, beg).c_str());
+                            embd_inp.insert(embd_inp.end(), beg.begin(), beg.end());
+                            LOG("input tokens (after <image>): %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, end).c_str());
+                            embd_inp.insert(embd_inp.end(), end.begin(), end.end());
+                        } else {
+                            const auto line_inp = ::llama_tokenize(ctx, buffer, false, false);
+                            LOG("input tokens: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, line_inp).c_str());
+                            embd_inp.insert(embd_inp.end(), line_inp.begin(), line_inp.end());
+                        }
+                    }
+
+                    const auto line_sfx = ::llama_tokenize(ctx, params.input_suffix, false, true);
                     embd_inp.insert(embd_inp.end(), line_sfx.begin(), line_sfx.end());
 
                     // instruct mode: insert response suffix
