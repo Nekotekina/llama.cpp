@@ -550,7 +550,10 @@ int main(int argc, char ** argv) {
     int n_remain           = params.n_predict;
     int n_consumed         = 0;
     int n_session_consumed = 0;
-    int n_past_guidance    = 0;
+    int n_past_guidance = 0;
+
+    int n_cut1 = -1;
+    int n_cut2 = -1;
 
     std::vector<int>   input_tokens;  g_input_tokens  = &input_tokens;
     std::vector<int>   output_tokens; g_output_tokens = &output_tokens;
@@ -594,19 +597,34 @@ int main(int argc, char ** argv) {
             if (ga_n == 1) {
                 // infinite text generation via context shifting
                 // if we run out of context:
-                // - take the n_keep first tokens from the original prompt (via n_past)
-                // - take half of the last (n_ctx - n_keep) tokens and recompute the logits in batches
-                if (n_past + (int) embd.size() + std::max<int>(0, guidance_offset) > n_ctx) {
+                // - take the n_keep first tokens from the original prompt (via
+                // n_past)
+                // - take half of the last (n_ctx - n_keep) tokens and recompute
+                // the logits in batches
+                // - attempt to reduce cut content amount while aligning it
+                // before one of user inputs
+                if (n_past + (int)embd.size() + std::max<int>(0, guidance_offset) + std::max<int>(n_remain - 1, 0) > n_ctx) {
                     if (params.n_predict == -2) {
                         LOG_TEE("\n\n%s: context full and n_predict == -%d => stopping\n", __func__, params.n_predict);
                         break;
                     }
 
-                    const int n_left    = n_past - params.n_keep;
-                    const int n_discard = n_left/2;
+                    const int n_left = n_past - params.n_keep;
 
-                    LOG("context full, swapping: n_past = %d, n_left = %d, n_ctx = %d, n_keep = %d, n_discard = %d\n",
-                            n_past, n_left, n_ctx, params.n_keep, n_discard);
+                    int n_discard = n_left / 2;
+
+                    LOG("context full, swapping: n_past = %d, n_left = %d, "
+                        "n_ctx = %d, n_keep = %d, n_discard = %d, cutpos1 = "
+                        "%d, cutpos2 = %d\n",
+                        n_past, n_left, n_ctx, params.n_keep, n_discard, n_cut1 - params.n_keep, n_cut2 - n_cut1);
+
+                    if (n_cut1 >= 0) {
+                        n_discard = n_cut1 - params.n_keep;
+                        n_cut1 = n_cut2 - n_discard;
+                        if (n_cut1 < params.n_keep)
+                            n_cut1 = -1;
+                        n_cut2 = -1;
+                    }
 
                     llama_kv_cache_seq_rm (ctx, 0, params.n_keep            , params.n_keep + n_discard);
                     llama_kv_cache_seq_add(ctx, 0, params.n_keep + n_discard, n_past, -n_discard);
@@ -882,6 +900,15 @@ int main(int argc, char ** argv) {
 
             if (n_past > 0 && is_interacting) {
                 LOG("waiting for user input\n");
+
+                if (n_past == params.n_keep) {
+                    n_cut1 = n_past;
+                } else if (n_past - params.n_keep < (n_ctx - params.n_keep) / 2) {
+                    // Include reverse prompt token that isn't evaluated yet
+                    n_cut1 = n_past + 1;
+                } else if (n_past - n_cut1 < (n_ctx - params.n_keep) / 2) {
+                    n_cut2 = n_past + 1;
+                }
 
                 if (params.instruct || params.chatml) {
                     printf("\n> ");
