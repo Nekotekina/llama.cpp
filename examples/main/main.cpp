@@ -930,7 +930,6 @@ int main(int argc, char ** argv) {
                     embd_inp.push_back(llama_token_bos(model));
                 }
 
-                std::string buffer;
                 if (!params.input_prefix.empty()) {
                     LOG("appending input prefix: '%s'\n", params.input_prefix.c_str());
                     printf("%s", params.input_prefix.c_str());
@@ -940,11 +939,16 @@ int main(int argc, char ** argv) {
                 console::set_display(console::user_input);
                 display = params.display_prompt;
 
-                std::string line;
+                std::vector<std::string> lines;
                 bool another_line = true;
                 do {
-                    another_line = console::readline(line, params.multiline_input);
-                    buffer += line;
+                    lines.emplace_back();
+                    another_line = console::readline(lines.back(), params.multiline_input);
+                    if (auto pos = lines.back().find_first_of('\04') + 1) {
+                        // Cut last line if it contains a Ctrl+D control char
+                        lines.back().resize(pos - 1);
+                        break;
+                    }
                 } while (another_line);
 
                 // done taking input, reset color
@@ -953,14 +957,15 @@ int main(int argc, char ** argv) {
 
                 // Add tokens to embd only if the input buffer is non-empty
                 // Entering a empty line lets the user pass control back
-                if (buffer.length() > 1) {
+                if (lines.size() > 1 || lines.back() != "\n") {
                     // append input suffix if any
                     if (!params.input_suffix.empty()) {
                         LOG("appending input suffix: '%s'\n", params.input_suffix.c_str());
                         printf("%s", params.input_suffix.c_str());
                     }
 
-                    LOG("buffer: '%s'\n", buffer.c_str());
+                    for (auto& buffer : lines)
+                        LOG("buffer: '%s'\n", buffer.c_str());
 
                     const size_t original_size = embd_inp.size();
 
@@ -977,17 +982,21 @@ int main(int argc, char ** argv) {
                         embd_inp.insert(embd_inp.end(), cml_pfx.begin(), cml_pfx.end());
                     }
                     if (params.escape) {
-                        process_escapes(buffer);
+                        for (auto& buffer : lines)
+                            process_escapes(buffer);
                     }
 
                     const auto line_pfx = ::llama_tokenize(ctx, params.input_prefix, false, true);
-                    const auto line_inp = ::llama_tokenize(ctx, buffer,              false, false);
-                    const auto line_sfx = ::llama_tokenize(ctx, params.input_suffix, false, true);
-
-                    LOG("input tokens: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, line_inp).c_str());
-
                     embd_inp.insert(embd_inp.end(), line_pfx.begin(), line_pfx.end());
-                    embd_inp.insert(embd_inp.end(), line_inp.begin(), line_inp.end());
+
+                    for (auto& buffer : lines) {
+                        const auto line_inp = ::llama_tokenize(ctx, buffer, false, false);
+                        LOG("input tokens: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, line_inp).c_str());
+                        embd_inp.insert(embd_inp.end(), line_inp.begin(), line_inp.end());
+                        n_remain -= line_inp.size();
+                    }
+
+                    const auto line_sfx = ::llama_tokenize(ctx, params.input_suffix, false, true);
                     embd_inp.insert(embd_inp.end(), line_sfx.begin(), line_sfx.end());
 
                     // instruct mode: insert response suffix
