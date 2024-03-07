@@ -910,8 +910,19 @@ int main(int argc, char ** argv) {
                     n_cut2 = n_past + 1;
                 }
 
+                if (params.n_predict >= 0) {
+                    n_remain = params.n_predict;
+                }
+
                 if (params.instruct || params.chatml) {
                     printf("\n> ");
+                } else if (!is_antiprompt && !params.antiprompt.empty()) {
+                    // tokenize and inject first reverse prompt
+                    LOG("force injecting first reverse prompt\n");
+                    const auto first_antiprompt = ::llama_tokenize(ctx, params.antiprompt.front(), false, true);
+                    embd_inp.insert(embd_inp.end(), first_antiprompt.begin(), first_antiprompt.end());
+                    is_antiprompt = true;
+                    printf("%s", params.antiprompt.front().c_str());
                 }
 
                 if (params.input_prefix_bos) {
@@ -996,7 +1007,6 @@ int main(int argc, char ** argv) {
                         output_ss << llama_token_to_piece(ctx, token);
                     }
 
-                    n_remain -= line_inp.size();
                     LOG("n_remain: %d\n", n_remain);
                 } else {
                     LOG("empty line, passing control back\n");
