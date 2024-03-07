@@ -242,6 +242,19 @@ int main(int argc, char ** argv) {
                 __func__, n_ctx_train, n_ctx);
     }
 
+    if (params.sparams.logit_restrict.size()) {
+        // Penalize all tokens with bytes outside of specified character list
+        const int n_voc = llama_n_vocab(model);
+        for (int i = 0; i < n_voc; i++) {
+            auto text = llama_token_to_piece(ctx, i);
+            if (text.find_first_not_of(params.sparams.logit_restrict) + 1) {
+                // TODO: this is inefficient but changing logits.data() has no effect
+                params.sparams.logit_bias[i] -= 5.0;
+                //logits[i] -= 5.0;
+            }
+        }
+    }
+
     // print system information
     {
         LOG_TEE("\n");

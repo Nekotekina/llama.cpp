@@ -58,6 +58,8 @@ typedef struct llama_sampling_params {
 
     std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
+    std::string logit_restrict; // penalize all logits (-5) with bytes outside of this string
+
     std::vector<llama_token> penalty_prompt_tokens;
     bool                     use_penalty_prompt_tokens = false;
 } llama_sampling_params;

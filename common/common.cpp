@@ -1017,6 +1017,14 @@ bool gpt_params_parse_ex(int argc, char ** argv, gpt_params & params) {
             arg_found = true;
             sparams.penalize_nl = false;
         }
+        if (arg == "--logit-restrict") {
+            if (++i >= argc) {
+                invalid_param = true;
+                break;
+            }
+            arg_found = true;
+            sparams.logit_restrict = argv[i];
+        }
         if (arg == "-l" || arg == "--logit-bias") {
             arg_found = true;
             if (++i >= argc) {
@@ -1297,6 +1305,7 @@ void gpt_print_usage(int /*argc*/, char ** argv, const gpt_params & params) {
     printf("                        KV cache defragmentation threshold (default: %.1f, < 0 - disabled)\n", params.defrag_thold);
     printf("  --ignore-eos          ignore end of stream token and continue generating (implies --logit-bias 2-inf)\n");
     printf("  --no-penalize-nl      do not penalize newline token\n");
+    printf("  --logit-restrict 'ab' penalize (bias -5) all tokens with bytes not included in the provided char sequence\n");
     printf("  --temp N              temperature (default: %.1f)\n", (double)sparams.temp);
     printf("  --all-logits          return logits for all tokens in the batch (default: disabled)\n");
     printf("  --hellaswag           compute HellaSwag score over random tasks from datafile supplied with -f\n");
