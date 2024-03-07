@@ -2178,6 +2178,31 @@ class InternLM2Model(Model):
             elif tokenizer.is_byte(token_id):
                 toktype = SentencePieceTokenTypes.BYTE
 
+            if token_id == 0:
+                text = "<unk>"
+            if token_id == 1:
+                text = "<s>"
+            if token_id == 2:
+                text = "</s>"
+            if token_id == 92543:
+                text = "<|im_start|>"
+                toktype = SentencePieceTokenTypes.CONTROL
+            if token_id == 92542:
+                text = "<|im_end|>"
+                toktype = SentencePieceTokenTypes.CONTROL
+            if token_id == 92541:
+                text = "<|action_start|>"
+                toktype = SentencePieceTokenTypes.CONTROL
+            if token_id == 92540:
+                text = "<|action_end|>"
+                toktype = SentencePieceTokenTypes.CONTROL
+            if token_id == 92539:
+                text = "<|interpreter|>"
+                toktype = SentencePieceTokenTypes.CONTROL
+            if token_id == 92538:
+                text = "<|plugin|>"
+                toktype = SentencePieceTokenTypes.CONTROL
+
             tokens.append(text)
             scores.append(score)
             toktypes.append(toktype)
