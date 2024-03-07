@@ -1143,6 +1143,15 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         sparams.penalize_nl = true;
         return true;
     }
+    if (arg == "--logit-restrict") {
+        if (++i >= argc) {
+            invalid_param = true;
+            return true;
+        }
+        sparams.logit_restrict = argv[i];
+        process_escapes(sparams.logit_restrict);
+        return true;
+    }
     if (arg == "-l" || arg == "--logit-bias") {
         if (++i >= argc) {
             invalid_param = true;
