@@ -384,8 +384,14 @@ int main(int argc, char** argv)
     LOG("inp_sfx: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, inp_sfx).c_str());
 
     // chatml prefix & suffix
-    const auto cml_pfx = ::llama_tokenize(ctx, "\n<|im_start|>user\n", true, true);
-    const auto cml_sfx = ::llama_tokenize(ctx, "<|im_end|>\n<|im_start|>assistant\n", false, true);
+    if (params.chatml && params.input_prefix.empty()) {
+        params.input_prefix = "user";
+    }
+    if (params.chatml && params.input_suffix.empty()) {
+        params.input_suffix = "assistant";
+    }
+    const auto cml_pfx = ::llama_tokenize(ctx, "\n<|im_start|>" + params.input_prefix + "\n", true, true);
+    const auto cml_sfx = ::llama_tokenize(ctx, "<|im_end|>\n<|im_start|>" + params.input_suffix + "\n", false, true);
 
     LOG("cml_pfx: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, cml_pfx).c_str());
     LOG("cml_sfx: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, cml_sfx).c_str());
@@ -398,7 +404,11 @@ int main(int argc, char** argv)
     // similar for chatml mode
     else if (params.chatml) {
         params.interactive_first = true;
-        params.antiprompt.emplace_back("<|im_start|>user\n");
+        params.antiprompt.emplace_back("<|im_start|>" + params.input_prefix + "\n");
+    }
+    if (params.chatml) {
+        params.input_prefix.clear();
+        params.input_suffix.clear();
     }
 
     // enable interactive mode if interactive start is specified
