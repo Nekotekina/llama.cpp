@@ -135,6 +135,7 @@ int main(int argc, char** argv)
     LOG_TEE("Log start\n");
     log_dump_cmdline(argc, argv);
     llama_log_set(llama_log_callback_logTee, nullptr);
+    std::ofstream tokens("tokens.log", std::ios::trunc);
 #endif // LOG_DISABLE_LOGS
 
     // TODO: Dump params ?
@@ -710,6 +711,11 @@ int main(int argc, char** argv)
 
                     LOG("eval: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, embd).c_str());
 
+#ifndef LOG_DISABLE_LOGS
+                    for (int j = i; j < i + n_eval; j++) {
+                        tokens << embd[j] << " -> " << llama_token_to_piece(ctx, embd[j]) << std::endl;
+                    }
+#endif
                     llama_decode(ctx, llama_batch_get_one(&embd[i], n_eval, n_past, 0));
 
                     n_past += n_eval;
@@ -1007,6 +1013,8 @@ int main(int argc, char** argv)
 
 #ifndef LOG_DISABLE_LOGS
     LOG_TEE("Log end\n");
+    tokens << std::flush;
+    tokens.close();
 #endif // LOG_DISABLE_LOGS
 
     return 0;
